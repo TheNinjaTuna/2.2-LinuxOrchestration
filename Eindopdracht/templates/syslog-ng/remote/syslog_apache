@@ -1,0 +1,11 @@
+source s_apache-local {
+	file("/var/log/apache2/access.log");
+};
+
+destination d_master {
+	syslog("20.20.20.2" transport("udp"));
+};
+
+log {
+	source(s_apache-local); destination(d_master);
+};

@@ -1,0 +1,11 @@
+source s_syslog-local {
+	file("/var/log/syslog" follow-freq(1));
+};
+
+destination d_master {
+	syslog("20.0.0.2" transport("udp"));
+};
+
+log {
+	source(s_syslog-local); destination(d_master);
+};

@@ -1,0 +1,124 @@
+---
+- name: Configure Docker Server
+  hosts: 20.0.0.5
+  remote_user: tuna
+  become: yes
+  become_user: root
+    
+  tasks:
+    
+    #Hier installeer ik alle gewenste packages
+
+  - name: Install aptitude
+    apt:
+      name: aptitude
+      state: latest
+    
+  - name: Install docker prerequisites
+    apt:
+      pkg:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - software-properties-common
+        - python3-pip
+        - virtualenv
+        - python3-setuptools
+      state: latest
+
+  - name: Docker GPG key installation
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+  
+  - name: Add docker repo
+    apt_repository:
+      repo: deb https://download.docker.com/linux/ubuntu jammy stable
+      state: present    
+
+  - name: Install Munin, Syslog-NG and Docker
+    apt:
+       pkg:
+          - munin-node
+          - syslog-ng
+          - docker-ce
+          - containerd.io
+          - docker-ce-cli  
+       state: latest
+       update_cache: true  
+
+     # Hier configureer ik de munin node zodat
+     # deze terugkoppeld aan de hoofdserver
+  
+  - name: Connect Munin-Node to host
+    lineinfile:
+      path: /etc/munin/munin-node.conf
+      line: 'allow 20.0.0.2'
+      insertbefore: BOF
+  - name: Set hostname variable for local syslog directory and munin configuration
+    set_fact:
+      hostname: '{{ ansible_host }}'
+  - name: Add remote host to local munin config
+    template:
+      src: /var/playbooks/templates/munin/local/add_host
+      dest: /etc/munin/munin-conf.d/{{ hostname }}.conf
+    delegate_to: localhost    
+  - name: Restart remote Munin-node service
+    ansible.builtin.service:
+      name: munin-node
+      state: restarted
+      enabled: true
+  - name: Restart local Munin service
+    ansible.builtin.service:
+      name: munin
+      state: restarted
+      enabled: true
+    delegate_to: localhost   
+
+
+        # Hier configureer ik syslog-ng
+        # zodat de remote system log
+        # op de centrale logserver komt.
+  
+  - name: Add remote syslog Syslog-NG configuration
+    copy:
+      src: /var/playbooks/templates/syslog-ng/remote/syslog_syslog
+      dest: /etc/syslog-ng/conf.d/syslog_syslog.conf     
+  - name: Configure local syslog-ng directory for syslog
+    file:
+      path: /var/log/logserver/{{ hostname }}/syslog
+      state: directory
+    register: local_dir
+    delegate_to: localhost
+  - name: Create temporary syslog conf file for copy to local Syslog-NG configuration 
+    template:
+      src: /var/playbooks/templates/syslog-ng/local/add_syslog_log
+      dest: /tmp/{{ ansible_host }}_syslog
+  - name: Copy file from remote to local
+    fetch:  
+      src: /tmp/{{ ansible_host}}_syslog
+      dest: /etc/syslog-ng/conf.d/{{ ansible_host }}_syslog.conf
+      flat: true
+  - name: Delete file from remote
+    file:
+      path: /var/confcopy/{{ ansible_host }}_syslog
+      state: absent
+
+        # Hier restart ik de syslog service
+        # op zowel de remote als lokale machine
+
+  - name: Restart remote syslog service
+    service:
+      name: syslog-ng
+      state: restarted
+      enabled: true
+  - name: Restart local syslog service        
+    service:
+      name: syslog-ng
+      state: restarted
+      enabled: true
+    delegate_to: localhost
+
+  - name: Run docker test container
+    shell: docker run hello-world
+

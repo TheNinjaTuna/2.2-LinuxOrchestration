@@ -1,0 +1,217 @@
+---
+- name: Configure WordPress Server
+  hosts:
+    - 20.0.0.5
+    - 20.0.0.6
+  remote_user: tuna
+  become: yes
+  become_user: root
+  serial: 1
+
+  vars_prompt:
+     - name: db_user
+       prompt: A dabase named WordPressDB will be created in MySQL, what will the db_user be?
+       private: no
+
+     - name: db_pass
+       prompt: What is the the password for this user? No special characters are allowed.
+       private: no
+     
+     - name: db_root_pass
+       prompt: A root password is also needed
+       private: no
+    
+  tasks:
+    
+    #Hier installeer ik alle gewenste packages
+
+  - name: Install Munin, Syslog-NG, Apache2, PHP and python dependencies
+    apt:
+       pkg:
+          - munin-node
+          - syslog-ng
+          - apache2
+          - mysql-server
+          - python3-mysqldb  
+          - python3-pymysql
+          - php-mysql
+          - php-curl
+          - php-mbstring
+          - php-xml
+          - php-xmlrpc
+          - php-soap
+          - php-intl
+          - php-zip  
+          - libapache2-mod-php 
+       state: latest
+
+     # Hier configureer ik de munin node zodat
+     # deze terugkoppeld aan de hoofdserver
+  
+  - name: Connect Munin-Node to host
+    lineinfile:
+      path: /etc/munin/munin-node.conf
+      line: 'allow 20.0.0.2'
+      insertbefore: BOF
+  - name: Set hostname variable for local syslog directory and munin configuration
+    set_fact:
+      hostname: '{{ ansible_host }}'
+  - name: Add remote host to local munin config
+    template:
+      src: /var/playbooks/templates/munin/local/add_host
+      dest: /etc/munin/munin-conf.d/{{ hostname }}.conf
+    delegate_to: localhost    
+  - name: Restart remote Munin-node service
+    ansible.builtin.service:
+      name: munin-node
+      state: restarted
+      enabled: true
+  - name: Restart local Munin service
+    ansible.builtin.service:
+      name: munin
+      state: restarted
+      enabled: true
+    delegate_to: localhost   
+
+
+        # Hier configureer ik syslog-ng
+        # zodat de remote system log
+        # op de centrale logserver komt.
+  
+  - name: Add remote syslog Syslog-NG configuration
+    copy:
+      src: /var/playbooks/templates/syslog-ng/remote/syslog_syslog
+      dest: /etc/syslog-ng/conf.d/syslog_syslog.conf     
+  - name: Configure local syslog-ng directory for syslog
+    file:
+      path: /var/log/logserver/{{ hostname }}/syslog
+      state: directory
+    register: local_dir
+    delegate_to: localhost
+  - name: Create temporary syslog conf file for copy to local Syslog-NG configuration 
+    template:
+      src: /var/playbooks/templates/syslog-ng/local/add_syslog_log
+      dest: /tmp/{{ ansible_host }}_syslog
+  - name: Copy file from remote to local
+    fetch:  
+      src: /tmp/{{ ansible_host}}_syslog
+      dest: /etc/syslog-ng/conf.d/{{ ansible_host }}_syslog.conf
+      flat: true
+  - name: Delete file from remote
+    file:
+      path: /var/confcopy/{{ ansible_host }}_syslog
+      state: absent
+
+        # Hier restart ik de syslog service
+        # op zowel de remote als lokale machine
+
+  - name: Restart remote syslog service
+    service:
+      name: syslog-ng
+      state: restarted
+      enabled: true
+  - name: Restart local syslog service        
+    service:
+      name: syslog-ng
+      state: restarted
+      enabled: true
+    delegate_to: localhost
+
+       # Hier begin ik met de configuratie van de MySQL server
+           
+  - name: Set MySQL root password
+    mysql_user:
+      name: root
+      password: "{{ db_root_pass }}"
+      login_unix_socket: /var/run/mysqld/mysqld.sock
+      #login_user: root
+      #login_password: "{{ db_root_pass }}"  
+    become_user: root  
+
+  - name: Create WordPressDB
+    mysql_db:
+      name: "WordPressDB"
+      state: present
+      login_user: root
+      login_password: "{{ db_root_pass }}"
+   
+  - name: Create corresponding database user
+    mysql_user:
+      name: "{{ db_user }}"
+      password: "{{ db_pass }}"
+      priv: "WordPressDB.*:ALL" 
+      state: present
+      login_user: root
+      login_password: "{{ db_root_pass }}"
+
+      # Hier begin ik met de configuratie van Apache
+
+  - name: Create www directory
+    file:
+      path: "/var/www/wordpress"
+      state: directory
+      owner: "www-data"
+      group: "www-data"
+      mode: '0755'
+  
+  - name: Create config for virtualhost
+    template:
+      src: "/var/playbooks/templates/apache/remote/wordpress_virtualhost"
+      dest: "/etc/apache2/sites-available/wordpress.conf"
+  
+  - name: Enable rewrite module
+    shell: /usr/sbin/a2enmod rewrite
+    
+  - name: Enable wordpress site
+    shell: /usr/sbin/a2ensite wordpress.conf    
+
+  - name: Remove default apache page
+    shell: /usr/sbin/a2dissite 000-default.conf
+
+  - name: Restart Apache service
+    service:
+      name: apache2
+      state: restarted
+      enabled: true
+
+        # Hier word WordPress geinstalleerd
+
+  - name: Get the latest WordPress version
+    unarchive:
+      src: https://wordpress.org/latest.tar.gz
+      dest: "/var/www/wordpress"
+      remote_src: yes
+      creates: "/var/www/wordpress/wordpress"
+
+  - name: Modify file ownership
+    file:
+      path: "/var/www/wordpress"
+      state: directory
+      recurse: yes
+      owner: www-data
+      group: www-data
+  
+  - name: Modify directory permissions
+    shell: "/usr/bin/find /var/www/wordpress/wordpress/ -type d -exec chmod 750 {} \\;"
+
+  - name: Modify file permissions
+    shell: "/usr/bin/find /var/www/wordpress/wordpress/ -type f -exec chmod 640 {} \\;"    
+
+  - name: Create wp-config file
+    template:
+      src: "/var/playbooks/templates/wordpress/remote/wp-config.php"
+      dest: "/var/www/wordpress/wordpress/wp-config.php"
+
+        #- name: Transfer apache harden script
+    # copy:
+      # src: /var/playbooks/scripts/apache_hard_script.sh 
+        #dest: /tmp/apache_hard_script.sh
+   
+        #- name: Execute apache harden script
+    # command: sh /tmp/apache_hard_script.sh    
+   
+  - name: Restart Apache one more time
+    service:
+      name: apache2
+      state: restarted
+      enabled: true  

@@ -1,0 +1,11 @@
+source s_mysql-local {
+	file("/var/log/mysql/error.log");
+};
+
+destination d_master {
+	syslog("20.20.20.2" transport("udp"));
+};
+
+log {
+	source(s_mysql-local); destination(d_master);
+};

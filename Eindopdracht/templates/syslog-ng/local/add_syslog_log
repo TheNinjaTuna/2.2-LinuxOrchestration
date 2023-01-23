@@ -1,0 +1,13 @@
+destination d_{{ ansible_host }}_syslog {
+	file("/var/log/logserver/{{ ansible_host }}/syslog/log");
+};
+
+filter f_{{ ansible_host }}_syslog {
+	host({{ ansible_host }});
+};
+
+log {
+	source(s_global_syslog); destination(d_{{ ansible_host }}_syslog);
+        filter(f_{{ ansible_host }}_syslog);
+};
+

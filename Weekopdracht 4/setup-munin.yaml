@@ -1,0 +1,22 @@
+---
+- name: Configure Ubuntu host for remote monitoring
+  hosts: 10.10.10.5
+  remote_user: tuna
+  become: yes
+  become_user: root
+
+  tasks:
+  - name: Install Munin-node
+    apt:
+      name: munin-node
+      state: latest
+  - name: Configure Munin-node
+    lineinfile:
+      path: /etc/munin/munin-node.conf
+      line: 'allow 10.10.10.4'
+      insertbefore: BOF
+  - name: Restart Munin-node service
+    ansible.builtin.service:
+      name: munin-node
+      state: restarted
+      enabled: true

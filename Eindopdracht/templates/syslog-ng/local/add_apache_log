@@ -1,0 +1,17 @@
+source s_{{ ansible_host }}_apache {
+	syslog(ip(0.0.0.0) transport("udp"))
+};
+
+destination d_{{ ansible_host }}_apache {
+	file("/var/log/logserver/{{ ansible_host }}/apache/log");
+};
+
+filter f_{{ ansible_host }}_apache {
+	host({{ ansible_host }});
+}
+
+log {
+	source(s_{{ ansible_host }}_apache); destination(d_{{ ansible_host }}_apache);
+        filter(f_{{ ansible_host }}_apache);
+};
+

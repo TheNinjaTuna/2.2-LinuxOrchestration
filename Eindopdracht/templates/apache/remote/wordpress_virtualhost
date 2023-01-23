@@ -1,0 +1,15 @@
+<VirtualHost *:80>
+   ServerAdmin webmaster@localhost
+   ServerName wordpress
+   ServerAlias www.wordpress
+   DocumentRoot /var/www/wordpress
+
+   <Directory /var/www/wordpress>
+      Options -Indexes
+   </Directory>
+
+   <IfModule mod_dir.c>
+      DirectoryIndex index.php index.html index.cgi index.pl index.xhtml index.htm
+   </IfModule>
+
+</VirtualHost>

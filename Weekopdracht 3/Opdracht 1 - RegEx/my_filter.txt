@@ -1,0 +1,9 @@
+Dit is het filter
+[a-zA-Z._-]{1,}[0-9A-Za-z]{1}@shaw\.com|[a-zA-Z._-]{1,}[0-9A-Za-z]{1}@shaw\.net
+
+Officieel zou je hem zo gebruiken:
+/[a-zA-Z._-]{1,}[0-9A-Za-z]{1}@shaw\.com|[a-zA-Z._-]{1,}[0-9A-Za-z]{1}@shaw\.net/gm
+
+Een probleem met dit filter is dat
+valid9hunter2@shaw.com - een ongeldig email adres - hunter2@shaw.com matched. 
+Hier kon ik geen weg omheen vinden met negative lookbehinds.
